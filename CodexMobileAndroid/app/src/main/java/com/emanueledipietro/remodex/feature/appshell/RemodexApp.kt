@@ -134,6 +134,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import com.emanueledipietro.remodex.R
 import com.emanueledipietro.remodex.data.connection.PairingQrPayload
+import com.emanueledipietro.remodex.data.connection.PairingQrValidationResult
+import com.emanueledipietro.remodex.data.connection.validatePairingQrCode
 import com.emanueledipietro.remodex.feature.onboarding.OnboardingScreen
 import com.emanueledipietro.remodex.feature.recovery.PairingScannerScreen
 import com.emanueledipietro.remodex.feature.mymacs.MyMacsScreen
@@ -658,16 +660,36 @@ fun RemodexApp(
                 if (pendingCode.isEmpty()) {
                     pairingCodeError = "Enter a valid pairing code."
                 } else {
-                    isResolvingPairingCode = true
-                    pairingCodeError = null
-                    viewModel.pairWithPairingCode(pendingCode) { errorMessage ->
-                        isResolvingPairingCode = false
-                        if (errorMessage == null) {
+                    when (val validation = validatePairingQrCode(pendingCode)) {
+                        is PairingQrValidationResult.Success -> {
                             isPairingCodeDialogPresented = false
                             pairingCodeInput = ""
+                            pairingCodeError = null
                             viewModel.finishManualScan()
-                        } else {
-                            pairingCodeError = errorMessage
+                            viewModel.pairWithQrPayload(validation.payload)
+                        }
+
+                        is PairingQrValidationResult.ShortCode -> {
+                            isResolvingPairingCode = true
+                            pairingCodeError = null
+                            viewModel.pairWithPairingCode(validation.code) { errorMessage ->
+                                isResolvingPairingCode = false
+                                if (errorMessage == null) {
+                                    isPairingCodeDialogPresented = false
+                                    pairingCodeInput = ""
+                                    viewModel.finishManualScan()
+                                } else {
+                                    pairingCodeError = errorMessage
+                                }
+                            }
+                        }
+
+                        is PairingQrValidationResult.ScanError -> {
+                            pairingCodeError = validation.message
+                        }
+
+                        is PairingQrValidationResult.BridgeUpdateRequired -> {
+                            pairingCodeError = validation.prompt.message
                         }
                     }
                 }
